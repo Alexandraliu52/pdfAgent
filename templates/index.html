@@ -3,6 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <title>Task-Oriented AI Assistant</title>
+    <!-- Add marked library for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Add highlight.js for code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <style>
         body { font-family: Arial; }
         .container { width: 60%; margin: 40px auto; }
@@ -37,8 +42,8 @@
             margin: 5px 0;
         }
         .message {
-            margin: 5px 0;
-            padding: 5px;
+            margin: 10px 0;
+            padding: 10px;
         }
         .user-message {
             background: #e3f2fd;
@@ -47,6 +52,61 @@
         .assistant-message {
             background: #f5f5f5;
             border-radius: 5px;
+        }
+        /* Markdown Styles */
+        .markdown-content {
+            line-height: 1.6;
+        }
+        .markdown-content h1,
+        .markdown-content h2,
+        .markdown-content h3 {
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            color: #333;
+        }
+        .markdown-content p {
+            margin: 0.5em 0;
+        }
+        .markdown-content pre {
+            background: #f8f8f8;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .markdown-content code {
+            font-family: 'Courier New', Courier, monospace;
+            background: #f0f0f0;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        .markdown-content pre code {
+            background: transparent;
+            padding: 0;
+        }
+        .markdown-content ul, 
+        .markdown-content ol {
+            padding-left: 20px;
+        }
+        .markdown-content blockquote {
+            margin: 0.5em 0;
+            padding-left: 1em;
+            border-left: 4px solid #ddd;
+            color: #666;
+        }
+        .markdown-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 1em 0;
+        }
+        .markdown-content th,
+        .markdown-content td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .markdown-content th {
+            background-color: #f5f5f5;
         }
         .upload-button {
             padding: 5px 10px;
@@ -115,6 +175,18 @@
 <script>
     let selectedFiles = [];
 
+    // Configure marked options
+    marked.setOptions({
+        highlight: function(code, lang) {
+            if (lang && hljs.getLanguage(lang)) {
+                return hljs.highlight(code, { language: lang }).value;
+            }
+            return hljs.highlightAuto(code).value;
+        },
+        breaks: true,
+        gfm: true
+    });
+
     // Toggle file upload area display
     document.getElementById('toggleUpload').onclick = function() {
         const uploadArea = document.getElementById('fileUpload');
@@ -155,24 +227,41 @@
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${isUser ? 'user-message' : 'assistant-message'}`;
         
-        // Check for download link
-        if (!isUser && content.includes('<download>')) {
-            const parts = content.split('<download>');
-            const text = parts[0];
-            const link = parts[1].replace('</download>', '');
-            
-            messageDiv.innerHTML = `
-                Assistant: ${text}<br>
-                <a href="${link}" class="download-button" target="_blank">
-                    📥 Download Merged File
-                </a>
-            `;
+        if (isUser) {
+            messageDiv.textContent = `User: ${content}`;
         } else {
-            messageDiv.textContent = isUser ? `User: ${content}` : `Assistant: ${content}`;
+            // Check for download link
+            if (content.includes('<download>')) {
+                const parts = content.split('<download>');
+                const text = parts[0];
+                const link = parts[1].replace('</download>', '');
+                
+                messageDiv.innerHTML = `
+                    Assistant: ${marked.parse(text)}<br>
+                    <a href="${link}" class="download-button" target="_blank">
+                        📥 Download Merged File
+                    </a>
+                `;
+            } else {
+                const markdownContent = document.createElement('div');
+                markdownContent.className = 'markdown-content';
+                markdownContent.innerHTML = marked.parse(content);
+                
+                const prefix = document.createElement('div');
+                prefix.textContent = 'Assistant: ';
+                
+                messageDiv.appendChild(prefix);
+                messageDiv.appendChild(markdownContent);
+            }
         }
         
         messages.appendChild(messageDiv);
         messages.scrollTop = messages.scrollHeight;
+        
+        // Apply syntax highlighting to code blocks
+        messageDiv.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightBlock(block);
+        });
     }
 
     // Send message and files

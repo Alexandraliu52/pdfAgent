@@ -38,5 +38,5 @@ def test_local_email(eml_file_path):
 
 if __name__ == "__main__":
     # Replace this path with your local eml file path
-    email_file = "C:/Users/AlexandraLiu/Downloads/Antw_ Re_ [PAYMENT REMINDER] Castorama - Gust Alberts - INV-13W250007312.eml"
+    email_file = "C:/Users/AlexandraLiu/Downloads/Re_ R-Cloud-25075404 ACE Hardware - Toolsworks International Ltd.eml"
     test_local_email(email_file) 

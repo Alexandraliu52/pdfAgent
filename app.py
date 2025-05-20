@@ -10,7 +10,11 @@ import os
 from langchain_core.exceptions import OutputParserException
 from PyPDF2 import PdfReader, PdfMerger
 from werkzeug.utils import secure_filename
-from email_mime_analyzer import MIMEAnalyzer
+import email
+import re
+import json
+from bs4 import BeautifulSoup
+import html2text
 
 
 UPLOAD_FOLDER = 'uploads'
@@ -133,72 +137,158 @@ class EmailSummaryTool(BaseTool):
     description: str = "Analyze and summarize .eml email chain. Input should be the path to the .eml file."
     return_direct: bool = True
 
+    def get_basic_headers(self, message=None) -> Dict[str, str]:
+        """Extract basic email headers"""
+        if message is None:
+            message = self.email_message
+            
+        return {
+            "subject": message.get("subject", ""),
+            "from": message.get("from", ""),
+            "to": message.get("to", ""),
+            "cc": message.get("cc", ""),
+            "date": message.get("date", ""),
+            "message_id": message.get("message-id", ""),
+            "in_reply_to": message.get("in-reply-to", ""),
+            "references": message.get("references", ""),
+            "thread_index": message.get("thread-index", "")
+        }
+
+
+    def extract_email_parts(self, msg):
+        """提取邮件中正文和所有附件/非文本部分"""
+        body_text = ""
+        html_text = ""
+        non_text_parts = []
+
+        if msg.is_multipart():
+            for part in msg.walk():
+                ctype = part.get_content_type()
+                disposition = part.get_content_disposition()
+                filename = part.get_filename()
+
+                if ctype == "text/plain" and disposition != "attachment":
+                    body_text += part.get_content()
+                elif ctype == "text/html" and disposition != "attachment":
+                    html_text += part.get_content()
+                elif disposition == "attachment" or filename:
+                    non_text_parts.append({
+                        "filename": filename or "unnamed",
+                        "content_type": ctype,
+                        "is_inline": disposition == "inline"
+                    })
+        else:
+            ctype = msg.get_content_type()
+            if ctype == "text/plain":
+                body_text = msg.get_content()
+            elif ctype == "text/html":
+                html_text = msg.get_content()
+
+        # fallback to html if no plain
+        content = body_text.strip() if body_text.strip() else html2text.html2text(html_text)
+        return content, non_text_parts
+
+    def classify_block(self, text):
+        if "Forwarded message" in text or "---------- Forwarded message" in text:
+            return "FORWARD"
+        elif re.search(r"On .* wrote:", text) or re.search(r">>> .* \d{2}\.\d{2}\.\d{4}", text):
+            return "REPLY"
+        elif re.search(r"^\s*>", text, re.MULTILINE):
+            return "QUOTED"
+        elif re.search(r"Auto-Reply|Out of Office|Delivery Status Notification", text, re.IGNORECASE):
+            return "NOTICE"
+        else:
+            return "ORIGINAL"
+
+    def split_email_history(self, text):
+        pattern = r"(?=\n?On .* wrote:|\n?>>> .* \d{2}\.\d{2}\.\d{4}|\n?---------- Forwarded message ----------)"
+        parts = re.split(pattern, text)
+        return [p.strip() for p in parts if p.strip()]
+
+    def parse_eml_to_json(self, file_path):
+        with open(file_path, 'rb') as f:
+            msg = BytesParser(policy=policy.default).parse(f)
+
+        # Step 1: extract main content + attachments/images
+        full_text, non_text_parts = self.extract_email_parts(msg)
+
+        # Step 2: split into message layers
+        blocks = self.split_email_history(full_text)
+
+        # Step 3: build output with non-text data attached only to the latest (top) layer
+        result = []
+        for i, block in enumerate(blocks):
+            result.append({
+                "index": i + 1,
+                "action": self.classify_block(block),
+                "content": block,
+                "non_text": non_text_parts if i == 0 else []  # 附件通常只出现在最上层
+            })
+
+        return result
+
+
     def _run(self, file_path: str) -> str:
         """Analyze and summarize an email chain from an .eml file."""
         try:
-            chain = self.analyze_eml_file(file_path)
-            summaries = self.summarize_email_chain(chain)
-            return "\n".join(summaries)
+            # Read the email file
+            with open(file_path, 'rb') as f:
+                email_content = f.read()
+            
+            # Parse the email
+            msg = email.message_from_bytes(email_content, policy=policy.default)
+
+            email_text = self.parse_eml_to_json(file_path);
+            # basic_headers = self.get_basic_headers(msg)
+            # Extract email content
+            # email_text = self.get_email_content(msg)
+            
+            # Send to LLM for analysis
+            prompt = f"""Please analyze this email chain and break down each email in the thread. 
+The email content is below:
+
+{email_text}
+
+Please provide a detailed analysis including:
+1. Identify each email in the chain (from newest to oldest)
+2. For each email, extract and analyze:
+   - Sender and recipients
+   - Date and time
+   - Subject
+   - Main content and key points
+   - Whether it's a reply or forward
+   - Any action items or important information
+
+Format your response in a clear, chronological structure, separating each email in the chain.
+Start with the most recent email and work backwards through the chain."""
+
+            response = llm.invoke(prompt)
+            return response.content
+            
         except Exception as e:
-            return f"Error analyzing email chain: {str(e)}"
+            return f"Error analyzing email: {str(e)}"
+
+    # def get_email_content(self, msg) -> str:
+    #     """Extract all text content from the email message."""
+    #     email_content = []
+        
+    #     # Get body content
+    #     if msg.is_multipart():
+    #         for part in msg.walk():
+    #             if part.get_content_maintype() == 'text':
+    #                 content = part.get_content()
+    #                 if content:
+    #                     email_content.append(content)
+    #     else:
+    #         if msg.get_content_maintype() == 'text':
+    #             content = msg.get_content()
+    #             if content:
+    #                 email_content.append(content)
+        
+    #     return "\n".join(email_content)
 
     async def _arun(self, file_path: str) -> str:
         return self._run(file_path)
-
-    def llm_summarize_email(self, email_info: Dict[str, Any]) -> str:
-        """Summarize a single email using LLM."""
-        prompt = f"""Please summarize this email:
-From: {email_info['headers'].get('from', 'N/A')}
-To: {email_info['headers'].get('to', 'N/A')}
-Subject: {email_info['headers'].get('subject', 'N/A')}
-Date: {email_info['headers'].get('date', 'N/A')}
-Body: {email_info['body'].get('plain', '')[:500]}
-Attachments: {len(email_info.get('attachments', []))}
-Embedded Images: {len(email_info.get('embedded_content', []))}
-
-Please provide a concise summary focusing on the main points and any important attachments."""
-        
-        response = llm.invoke(prompt)
-        return response.content
-
-    def analyze_eml_file(self, file_path: str) -> List[Dict[str, Any]]:
-        """Analyze an .eml file and extract the email chain."""
-        try:
-            with open(file_path, 'rb') as f:
-                raw_bytes = f.read()
-                
-            try:
-                mime_content = raw_bytes.decode('utf-8')
-            except UnicodeDecodeError:
-                mime_content = raw_bytes.decode('latin1')
-      
-            analyzer = MIMEAnalyzer(mime_content)
-            chain = analyzer.extract_email_chain()
-            
-            for idx, email in enumerate(chain):
-                try:
-                    msg = BytesParser(policy=policy.default).parsebytes(
-                        email['body'].get('plain', '').encode('utf-8')
-                    )
-                except Exception:
-                    msg = None
-                if msg:
-                    email['attachments'] = analyzer.get_attachments(msg)
-                    email['embedded_content'] = analyzer.get_embedded_content(msg)
-                else:
-                    email['attachments'] = []
-                    email['embedded_content'] = []
-            return chain
-        except Exception as e:
-            raise Exception(f"Error analyzing email file: {str(e)}")
-
-    def summarize_email_chain(self, chain: List[Dict[str, Any]]) -> List[str]:
-        """Summarize each email in the chain."""
-        summaries = []
-        for idx, email in enumerate(chain):
-            summary = self.llm_summarize_email(email)
-            summaries.append(f"--- Email Level {idx + 1} ---\n{summary}")
-        return summaries
 
 # Azure OpenAI LLM Configuration
 llm = AzureChatOpenAI(
