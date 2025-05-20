@@ -2,17 +2,19 @@ from flask import Flask, request, jsonify, render_template, send_file, url_for
 from langchain_openai import AzureChatOpenAI
 from langchain.agents import AgentExecutor, create_react_agent
 from langchain_core.prompts import PromptTemplate
-from langchain.agents.format_scratchpad import format_log_to_messages
-from langchain.agents.output_parsers import ReActSingleInputOutputParser
-from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.tools import BaseTool
+from email import policy
+from email.parser import BytesParser
+from typing import List, Dict, Any
 import os
 from langchain_core.exceptions import OutputParserException
 from PyPDF2 import PdfReader, PdfMerger
 from werkzeug.utils import secure_filename
+from email_mime_analyzer import MIMEAnalyzer
+
 
 UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'pdf'}
+ALLOWED_EXTENSIONS = {'pdf', 'eml'}
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -126,6 +128,78 @@ class PDFMergerTool(BaseTool):
     async def _arun(self, file_paths: str) -> str:
         return self._run(file_paths)
 
+class EmailSummaryTool(BaseTool):
+    name: str = "email_chain_analyzer"
+    description: str = "Analyze and summarize .eml email chain. Input should be the path to the .eml file."
+    return_direct: bool = True
+
+    def _run(self, file_path: str) -> str:
+        """Analyze and summarize an email chain from an .eml file."""
+        try:
+            chain = self.analyze_eml_file(file_path)
+            summaries = self.summarize_email_chain(chain)
+            return "\n".join(summaries)
+        except Exception as e:
+            return f"Error analyzing email chain: {str(e)}"
+
+    async def _arun(self, file_path: str) -> str:
+        return self._run(file_path)
+
+    def llm_summarize_email(self, email_info: Dict[str, Any]) -> str:
+        """Summarize a single email using LLM."""
+        prompt = f"""Please summarize this email:
+From: {email_info['headers'].get('from', 'N/A')}
+To: {email_info['headers'].get('to', 'N/A')}
+Subject: {email_info['headers'].get('subject', 'N/A')}
+Date: {email_info['headers'].get('date', 'N/A')}
+Body: {email_info['body'].get('plain', '')[:500]}
+Attachments: {len(email_info.get('attachments', []))}
+Embedded Images: {len(email_info.get('embedded_content', []))}
+
+Please provide a concise summary focusing on the main points and any important attachments."""
+        
+        response = llm.invoke(prompt)
+        return response.content
+
+    def analyze_eml_file(self, file_path: str) -> List[Dict[str, Any]]:
+        """Analyze an .eml file and extract the email chain."""
+        try:
+            with open(file_path, 'rb') as f:
+                raw_bytes = f.read()
+                
+            try:
+                mime_content = raw_bytes.decode('utf-8')
+            except UnicodeDecodeError:
+                mime_content = raw_bytes.decode('latin1')
+      
+            analyzer = MIMEAnalyzer(mime_content)
+            chain = analyzer.extract_email_chain()
+            
+            for idx, email in enumerate(chain):
+                try:
+                    msg = BytesParser(policy=policy.default).parsebytes(
+                        email['body'].get('plain', '').encode('utf-8')
+                    )
+                except Exception:
+                    msg = None
+                if msg:
+                    email['attachments'] = analyzer.get_attachments(msg)
+                    email['embedded_content'] = analyzer.get_embedded_content(msg)
+                else:
+                    email['attachments'] = []
+                    email['embedded_content'] = []
+            return chain
+        except Exception as e:
+            raise Exception(f"Error analyzing email file: {str(e)}")
+
+    def summarize_email_chain(self, chain: List[Dict[str, Any]]) -> List[str]:
+        """Summarize each email in the chain."""
+        summaries = []
+        for idx, email in enumerate(chain):
+            summary = self.llm_summarize_email(email)
+            summaries.append(f"--- Email Level {idx + 1} ---\n{summary}")
+        return summaries
+
 # Azure OpenAI LLM Configuration
 llm = AzureChatOpenAI(
     azure_endpoint="https://qsp-prod.openai.azure.com",
@@ -134,7 +208,7 @@ llm = AzureChatOpenAI(
     api_key="CpcWxZPCPwBYHlvmHTppdSB3BWBw4tJvOGG1YG9ESI9xRE6TDeSzJQQJ99AJACYeBjFXJ3w3AAABACOGR9Ue"
 )
 
-tools = [PDFMergerTool(), PDFSummarizerTool()]
+tools = [PDFMergerTool(), PDFSummarizerTool(), EmailSummaryTool()]
 
 # Get tool names and descriptions
 tool_names = [tool.name for tool in tools]
@@ -214,20 +288,20 @@ def chat_with_files():
     uploaded_files = []  # Track uploaded file paths
     try:
         if 'files[]' not in request.files:
-            return jsonify({'reply': 'Please upload PDF files'}), 400
+            return jsonify({'reply': 'Please upload files'}), 400
         
         files = request.files.getlist('files[]')
         message = request.form.get('message', '')
         
         if not files:
-            return jsonify({'reply': 'Please select PDF files'}), 400
+            return jsonify({'reply': 'Please select files'}), 400
         
         # Check all files
         for file in files:
             if file.filename == '':
                 return jsonify({'reply': 'There are unselected files'}), 400
             if not allowed_file(file.filename):
-                return jsonify({'reply': 'Only PDF file format is supported'}), 400
+                return jsonify({'reply': 'Only PDF and EML file formats are supported'}), 400
         
         # Save all files
         filepaths = []
@@ -239,11 +313,15 @@ def chat_with_files():
             filepaths.append(filepath)
             uploaded_files.append(filepath)
         
-        # Prepare input for agent
-        if len(filepaths) > 1:
+        # Prepare input for agent based on file types
+        if len(filepaths) > 1 and all(f.endswith('.pdf') for f in filepaths):
             input_text = f"merge these PDF files: {','.join(filepaths)}"
-        else:
+        elif len(filepaths) == 1 and filepaths[0].endswith('.pdf'):
             input_text = f"summarize this PDF file: {filepaths[0]}"
+        elif len(filepaths) == 1 and filepaths[0].endswith('.eml'):
+            input_text = f"analyze this email chain: {filepaths[0]}"
+        else:
+            return jsonify({'reply': 'Invalid combination of file types'}), 400
             
         # Call agent executor to process request
         response = agent_executor.invoke({"input": input_text})
