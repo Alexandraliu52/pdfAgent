@@ -295,7 +295,7 @@ llm = AzureChatOpenAI(
     azure_endpoint="https://qsp-prod.openai.azure.com",
     api_version="2025-01-01-preview",
     deployment_name="gpt-4o",
-    api_key="CpcWxZPCPwBYHlvmHTppdSB3BWBw4tJvOGG1YG9ESI9xRE6TDeSzJQQJ99AJACYeBjFXJ3w3AAABACOGR9Ue"
+    api_key=""
 )
 
 tools = [PDFMergerTool(), PDFSummarizerTool(), EmailSummaryTool()]
