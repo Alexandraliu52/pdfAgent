@@ -9,34 +9,152 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <style>
-        body { font-family: Arial; }
-        .container { width: 60%; margin: 40px auto; }
+        body { 
+            font-family: Arial; 
+            margin: 0;
+            padding: 0;
+            display: flex;
+        }
+        .sidebar {
+            width: 300px;
+            background: #f8f9fa;
+            height: 100vh;
+            padding: 20px;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            overflow-y: auto;
+        }
+        .sidebar h2 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .feature-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .feature-card h3 {
+            margin-top: 0;
+            color: #2c3e50;
+        }
+        .prompt-box {
+            background: #f1f3f5;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: monospace;
+            cursor: pointer;
+            position: relative;
+        }
+        .prompt-box:hover {
+            background: #e9ecef;
+        }
+        .prompt-box::after {
+            content: 'Click to copy';
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 12px;
+            color: #868e96;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .prompt-box:hover::after {
+            opacity: 1;
+        }
+        .main-content {
+            flex-grow: 1;
+            padding: 40px;
+            height: 100vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+        .container { 
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+        }
         #messages { 
             border: 1px solid #ccc; 
-            min-height: 300px; 
+            flex-grow: 1;
             padding: 10px; 
             margin-bottom: 10px;
             overflow-y: auto;
+            background: white;
+            border-radius: 8px;
         }
         .input-area {
             display: flex;
             gap: 10px;
             align-items: center;
             margin-bottom: 10px;
+            position: relative;
         }
         #input { 
             flex-grow: 1;
-            padding: 8px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
         }
         #send { 
-            padding: 8px 20px;
+            padding: 12px 24px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        #send:hover {
+            background: #45a049;
         }
         .file-upload {
             display: none;
             margin-top: 10px;
-            padding: 10px;
+            padding: 15px;
             border: 1px dashed #ccc;
+            border-radius: 8px;
             background: #f9f9f9;
+        }
+        .loading-spinner {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+        }
+        .loading-spinner::after {
+            content: '';
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #4CAF50;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            display: block;
+        }
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 999;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
         .file-input {
             margin: 5px 0;
@@ -153,24 +271,52 @@
     </style>
 </head>
 <body>
-<div class="container">
-    <div id="messages"></div>
-    <div class="input-area">
-        <button id="toggleUpload" class="upload-button">📎 Upload Files</button>
-        <input id="input" type="text" placeholder="Enter command (e.g., 'merge PDF files' or 'summarize this document')..." />
-        <button id="send">Send</button>
-    </div>
-    <div id="fileUpload" class="file-upload">
-        <div class="file-input">
-            <label>Select multiple PDF files (will be merged in selection order):</label>
-            <input type="file" id="files" accept=".pdf,.eml" multiple>
+    <div class="sidebar">
+        <h2>Available Features</h2>
+        <div class="feature-card">
+            <h3>📄 Merge PDF Files</h3>
+            <p>Combine multiple PDF files into a single document.</p>
+            <div class="prompt-box" data-prompt="Please merge these PDF files into a single document">
+                Please merge these PDF files into a single document
+            </div>
         </div>
-        <div class="selected-files">
-            <p>Selected files:</p>
-            <ul id="fileList" class="file-list"></ul>
+        <div class="feature-card">
+            <h3>📝 Summarize PDF</h3>
+            <p>Get a comprehensive summary of a PDF document.</p>
+            <div class="prompt-box" data-prompt="Please provide a detailed summary of this PDF file">
+                Please provide a detailed summary of this PDF file
+            </div>
+        </div>
+        <div class="feature-card">
+            <h3>✉️ Analyze Email</h3>
+            <p>Extract and analyze email information.</p>
+            <div class="prompt-box" data-prompt="Please analyze this email">
+                Please analyze this email
+            </div>
         </div>
     </div>
-</div>
+    <div class="main-content">
+        <div class="container">
+            <div id="messages"></div>
+            <div class="input-area">
+                <button id="toggleUpload" class="upload-button">📎 Upload Files</button>
+                <input id="input" type="text" placeholder="Enter command (e.g., 'merge PDF files' or 'summarize this document')..." />
+                <button id="send">Send</button>
+            </div>
+            <div id="fileUpload" class="file-upload">
+                <div class="file-input">
+                    <label>Select multiple PDF files (will be merged in selection order):</label>
+                    <input type="file" id="files" accept=".pdf,.eml" multiple>
+                </div>
+                <div class="selected-files">
+                    <p>Selected files:</p>
+                    <ul id="fileList" class="file-list"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="loading-spinner"></div>
+    <div class="loading-overlay"></div>
 
 <script>
     let selectedFiles = [];
@@ -192,6 +338,20 @@
         const uploadArea = document.getElementById('fileUpload');
         uploadArea.style.display = uploadArea.style.display === 'none' ? 'block' : 'none';
     };
+
+    // Handle prompt box clicks
+    document.querySelectorAll('.prompt-box').forEach(box => {
+        box.addEventListener('click', function() {
+            const prompt = this.getAttribute('data-prompt');
+            document.getElementById('input').value = prompt;
+        });
+    });
+
+    // Show/hide loading spinner
+    function toggleLoading(show) {
+        document.querySelector('.loading-spinner').style.display = show ? 'block' : 'none';
+        document.querySelector('.loading-overlay').style.display = show ? 'block' : 'none';
+    }
 
     // Listen for file selection
     document.getElementById('files').onchange = function(e) {
@@ -271,16 +431,17 @@
 
         addMessage(input, true);
         document.getElementById('input').value = '';
+        toggleLoading(true);
 
-        // Upload files if selected
-        if (selectedFiles.length > 0) {
-            const formData = new FormData();
-            selectedFiles.forEach(file => {
-                formData.append('files[]', file);
-            });
-            formData.append('message', input);
+        try {
+            // Upload files if selected
+            if (selectedFiles.length > 0) {
+                const formData = new FormData();
+                selectedFiles.forEach(file => {
+                    formData.append('files[]', file);
+                });
+                formData.append('message', input);
 
-            try {
                 const response = await fetch('/chat_with_files', {
                     method: 'POST',
                     body: formData
@@ -290,12 +451,8 @@
                 // Clear file selection after successful upload
                 selectedFiles = [];
                 updateFileList();
-            } catch (error) {
-                addMessage('Error: Failed to process files. ' + error.message);
-            }
-        } else {
-            // Regular chat without files
-            try {
+            } else {
+                // Regular chat without files
                 const response = await fetch('/chat', {
                     method: 'POST',
                     headers: {
@@ -305,9 +462,11 @@
                 });
                 const data = await response.json();
                 addMessage(data.reply);
-            } catch (error) {
-                addMessage('Error: Failed to send message. ' + error.message);
             }
+        } catch (error) {
+            addMessage('Error: ' + error.message);
+        } finally {
+            toggleLoading(false);
         }
     };
 

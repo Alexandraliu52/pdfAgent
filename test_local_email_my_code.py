@@ -2,8 +2,6 @@ import os
 from app import EmailSummaryTool
 
 
-
-
 def test_local_email(eml_file_path):
     """
     Test EmailSummaryTool with a local eml file
@@ -38,5 +36,7 @@ def test_local_email(eml_file_path):
 
 if __name__ == "__main__":
     # Replace this path with your local eml file path
-    email_file = "C:/Users/AlexandraLiu/Downloads/Re_ R-Cloud-25075404 ACE Hardware - Toolsworks International Ltd.eml"
-    test_local_email(email_file) 
+    email_file = "C:/Users/AlexandraLiu/Downloads/RE_ RE_ Re_ RE_ RE_ kiko audit.eml"
+    json_file = "structured_email.json"
+    test_local_email(email_file)
+
