@@ -10,9 +10,36 @@ from pdf_merge_tool import PDFMergerTool
 from pdf_summarizer_tool import PDFSummarizerTool
 from email_summarizer_tool import EmailSummaryTool
 from llm_config import llm
+from functools import wraps
+from flask import Response
 
 UPLOAD_FOLDER = 'uploads'
 ALLOWED_EXTENSIONS = {'pdf', 'eml'}
+
+# 设置固定用户名和密码
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "PDFAgent2025"
+
+def check_auth(username, password):
+    """This function is called to check if the username and password are valid."""
+    return username == ADMIN_USERNAME and password == ADMIN_PASSWORD
+
+def authenticate():
+    """Sends a 401 response that enables basic auth"""
+    return Response(
+        'Could not verify your access level for that URL.\n'
+        'You have to login with proper credentials', 401,
+        {'WWW-Authenticate': 'Basic realm="Login Required"'}
+    )
+
+def requires_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not check_auth(auth.username, auth.password):
+            return authenticate()
+        return f(*args, **kwargs)
+    return decorated
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
@@ -70,6 +97,7 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @app.route('/download/<filename>')
+@requires_auth
 def download_file(filename):
     try:
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -95,6 +123,7 @@ def download_file(filename):
         return jsonify({'error': f'Error downloading file: {str(e)}'}), 404
 
 @app.route('/chat_with_files', methods=['POST'])
+@requires_auth
 def chat_with_files():
     uploaded_files = []  # Track uploaded file paths
     try:
@@ -145,6 +174,7 @@ def chat_with_files():
         return jsonify({'reply': f'Error processing files: {str(e)}'}), 500
 
 @app.route('/chat', methods=['POST'])
+@requires_auth
 def chat():
     try:
         user_input = request.json['message']
@@ -157,6 +187,7 @@ def chat():
         return jsonify({'reply': f'Sorry, an error occurred while processing your request: {str(e)}'})
 
 @app.route('/')
+@requires_auth
 def index():
     return render_template('index.html')
 
