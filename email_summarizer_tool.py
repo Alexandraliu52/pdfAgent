@@ -184,6 +184,8 @@ class EmailSummaryTool(BaseTool):
             - Subject
             - Main content and key points
             - Any action items or important information
+            - **Tone Analysis**: Evaluate the emotional tone of the email (e.g., formal, informal, positive, negative, neutral, etc.)
+
 
             3. Thread Analysis:
             - Identify the main topic and overall context
@@ -193,7 +195,7 @@ class EmailSummaryTool(BaseTool):
             - Map stakeholder involvement
 
             4. Response Recommendations:
-            - Provide three distinct response options:
+            - Provide three distinct email response options with email format:
                 a) Direct Response: Immediate action-focused reply
                 b) Strategic Response: Relationship and long-term focused
                 c) Clarifying Response: Information gathering approach

@@ -268,11 +268,31 @@
             cursor: pointer;
             font-weight: bold;
         }
+        .copyright {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: rgba(248, 249, 250, 0.9);
+            text-align: center;
+            padding: 10px;
+            font-size: 0.9em;
+            color: #666;
+            border-top: 1px solid #ddd;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
     <div class="sidebar">
         <h2>Available Features</h2>
+        <div class="feature-card">
+            <h3>✉️ Analyze Email</h3>
+            <p>Extract and analyze email information.</p>
+            <div class="prompt-box" data-prompt="Please analyze this email">
+                Please analyze this email
+            </div>
+        </div>
         <div class="feature-card">
             <h3>📄 Merge PDF Files</h3>
             <p>Combine multiple PDF files into a single document.</p>
@@ -287,13 +307,7 @@
                 Please provide a detailed summary of this PDF file
             </div>
         </div>
-        <div class="feature-card">
-            <h3>✉️ Analyze Email</h3>
-            <p>Extract and analyze email information.</p>
-            <div class="prompt-box" data-prompt="Please analyze this email">
-                Please analyze this email
-            </div>
-        </div>
+      
     </div>
     <div class="main-content">
         <div class="container">
@@ -317,6 +331,9 @@
     </div>
     <div class="loading-spinner"></div>
     <div class="loading-overlay"></div>
+    <div class="copyright">
+        © 2025 Alexandra Liu. All rights reserved.
+    </div>
 
 <script>
     let selectedFiles = [];
